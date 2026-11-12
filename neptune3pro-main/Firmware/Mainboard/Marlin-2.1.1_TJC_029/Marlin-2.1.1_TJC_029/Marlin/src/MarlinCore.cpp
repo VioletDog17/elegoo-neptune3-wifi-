@@ -52,6 +52,9 @@
 #include "gcode/queue.h"
 
 #include "feature/pause.h"
+#if ENABLED(NEPTUNE_MKS_WIFI)
+  #include "feature/neptune_mks_wifi/wifi.h"
+#endif
 #include "sd/cardreader.h"
 
 #include "lcd/marlinui.h"
@@ -835,6 +838,7 @@ void idle(bool no_stepper_sleep/*=false*/) {
 
   // Run HAL idle tasks
   hal.idletask();
+  TERN_(NEPTUNE_MKS_WIFI, NeptuneMksWifi::tick());
 
   // Check network connection
   TERN_(HAS_ETHERNET, ethernet.check());
@@ -1345,6 +1349,9 @@ void setup() {
   // (because EEPROM code calls the UI).
 
   SETUP_RUN(ui.init());
+  #if ENABLED(NEPTUNE_MKS_WIFI)
+    SETUP_RUN(NeptuneMksWifi::init());
+  #endif
 
   #if PIN_EXISTS(SAFE_POWER)
     #if HAS_DRIVER_SAFE_POWER_PROTECT

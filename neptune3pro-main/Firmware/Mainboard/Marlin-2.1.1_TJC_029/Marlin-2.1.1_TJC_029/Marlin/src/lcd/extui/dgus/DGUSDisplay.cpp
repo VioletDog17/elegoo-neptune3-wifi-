@@ -41,6 +41,9 @@
 #endif
 
 #include "DGUSDisplay.h"
+#if ENABLED(NEPTUNE_MKS_WIFI_UPLOAD)
+  #include "../../../feature/neptune_mks_wifi/wifi.h"
+#endif
 #include "DGUSVPVariable.h"
 #include "DGUSDisplayDef.h"
 
@@ -69,7 +72,9 @@ void DGUSDisplay::InitDisplay() {
   #ifndef LCD_BAUDRATE
     #define LCD_BAUDRATE 115200
   #endif
-  LCD_SERIAL.begin(LCD_BAUDRATE);
+  #if DISABLED(NEPTUNE_MKS_WIFI)
+    LCD_SERIAL.begin(LCD_BAUDRATE);
+  #endif
 
   if (TERN1(POWER_LOSS_RECOVERY, !recovery.valid())) {  // If no Power-Loss Recovery is needed...
     TERN_(DGUS_LCD_UI_MKS, delay(LOGO_TIME_DELAY));     // Show the logo for a little while
@@ -84,6 +89,8 @@ void DGUSDisplay::InitDisplay() {
 }
 
 void DGUSDisplay::WriteVariable(uint16_t adr, const void *values, uint8_t valueslen, bool isstr) {
+  // USART2 belongs to the binary Wi-Fi receiver in the TJC-only build.
+  if (ENABLED(NEPTUNE_MKS_WIFI)) return;
   const char* myvalues = static_cast<const char*>(values);
   bool strend = !myvalues;
   WriteHeader(adr, DGUS_CMD_WRITEVAR, valueslen);
@@ -128,6 +135,7 @@ void DGUSDisplay::WriteVariable(uint16_t adr, long value) {
 }
 
 void DGUSDisplay::WriteVariablePGM(uint16_t adr, const void *values, uint8_t valueslen, bool isstr) {
+  if (ENABLED(NEPTUNE_MKS_WIFI)) return;
   const char* myvalues = static_cast<const char*>(values);
   bool strend = !myvalues;
   WriteHeader(adr, DGUS_CMD_WRITEVAR, valueslen);
@@ -153,6 +161,7 @@ void DGUSDisplay::WriteVariablePGM(uint16_t adr, const void *values, uint8_t val
 
 void DGUSDisplay::ProcessRx() {
 
+  #if DISABLED(NEPTUNE_MKS_WIFI)
   #if ENABLED(SERIAL_STATS_RX_BUFFER_OVERRUNS)
     if (!LCD_SERIAL.available() && LCD_SERIAL.buffer_overruns()) {
       // Overrun, but reset the flag only when the buffer is empty
@@ -242,6 +251,11 @@ void DGUSDisplay::ProcessRx() {
     }
   }
 
+  #endif // USART2: legacy DGUS screen, or Wi-Fi (never both)
+
+  #if ENABLED(NEPTUNE_MKS_WIFI)
+    uint8_t receivedbyte;
+  #endif
   if(LCD_SERIAL_2.available())
   {
     switch (rx_datagram_state) 
@@ -374,6 +388,7 @@ void DGUSDisplay::ProcessRx() {
 size_t DGUSDisplay::GetFreeTxBuffer() { return SERIAL_GET_TX_BUFFER_FREE(); }
 
 void DGUSDisplay::WriteHeader(uint16_t adr, uint8_t cmd, uint8_t payloadlen) {
+  if (ENABLED(NEPTUNE_MKS_WIFI)) return;
   LCD_SERIAL.write(DGUS_HEADER1);
   LCD_SERIAL.write(DGUS_HEADER2);
   LCD_SERIAL.write(payloadlen + 3);
@@ -383,10 +398,13 @@ void DGUSDisplay::WriteHeader(uint16_t adr, uint8_t cmd, uint8_t payloadlen) {
 }
 
 void DGUSDisplay::WritePGM(const char str[], uint8_t len) {
+  if (ENABLED(NEPTUNE_MKS_WIFI)) return;
   while (len--) LCD_SERIAL.write(pgm_read_byte(str++));
 }
 
 void DGUSDisplay::loop() {
+  // Avoid directory scans and screen delays while a high-speed block is in flight.
+  TERN_(NEPTUNE_MKS_WIFI_UPLOAD, if (NeptuneMksWifi::storage_busy()) return);
   // Protect against recursion. ProcessRx() may indirectly call idle() when injecting G-code commands.
   // if (!no_reentrance) {
   //   no_reentrance = true;

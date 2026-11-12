@@ -1,0 +1,9 @@
+# Preserve published bytes: manifests and SHA256 must also match after checkout.
+firmware/** -text
+*.HMI binary
+*.tft binary
+*.bin binary
+*.zip binary
+# Integration fixtures have intentional byte lengths.
+*.gcode -text
+*.GCO -text

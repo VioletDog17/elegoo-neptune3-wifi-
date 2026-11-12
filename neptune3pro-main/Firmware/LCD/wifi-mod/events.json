@@ -1,0 +1,7 @@
+{
+  "Program.s prefix": "int wifi_state=0",
+  "main.tm0 timer": "fill 0,0,272,69,10633\nxstr 0,8,272,24,0,65535,10633,1,1,1,\"NEPTUNE 3 PRO WIFI MOD\"\nif(wifi_state==2)\n{\n  sys2=2016\n  xstr 10,40,208,20,0,2016,10633,0,1,1,\"Wi-Fi connected\"\n}else\n{\n  sys2=50712\n  xstr 10,40,208,20,0,50712,10633,0,1,1,\"Wi-Fi offline\"\n}\nline 230,47,241,41,sys2\nline 241,41,252,47,sys2\nline 233,51,241,46,sys2\nline 241,46,249,51,sys2\nline 237,55,241,52,sys2\nline 241,52,245,55,sys2\ncirs 241,59,1,sys2",
+  "file1 page postinitialize": "t25.font=0\nif(langue==5)\n{\n  t25.txt=\"Файлы / Обновить\"\n}else\n{\n  t25.txt=\"Files / Refresh\"\n}\ndraw 44,8,232,38,50712",
+  "file1.t25 touch release": "printh 5A A5 06 83 22 03 01 00 01",
+  "information page postinitialize": "xstr 8,360,256,25,0,65535,10566,1,1,1,\"WIFI mod by VioletDog\""
+}

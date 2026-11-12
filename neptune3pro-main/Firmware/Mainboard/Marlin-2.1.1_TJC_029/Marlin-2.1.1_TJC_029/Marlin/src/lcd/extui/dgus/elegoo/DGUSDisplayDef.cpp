@@ -42,6 +42,11 @@
   #include "../../../../module/endstops.h"
   #include "../../../../feature/babystep.h"
   #include "../../../../gcode/gcode.h"
+  #include "../../../../libs/gcode_filename.h"
+  #include "../../../../libs/elegoo_preview.h"
+  #if ENABLED(NEPTUNE_MKS_WIFI_UPLOAD)
+    #include "../../../../feature/neptune_mks_wifi/sd_names.h"
+  #endif
   #include "../../../../../src/feature/bedlevel/bedlevel.h"
   #include "../../../../../src/feature/bedlevel/abl/bbl.h"
   
@@ -324,7 +329,14 @@
 
   void RTSSHOW::RTS_SndData(const char *str, unsigned long addr, unsigned char cmd/*= VarAddr_W*/)
   {
+    #if ENABLED(TJC_AVAILABLE)
+      // TJC uses separate text commands. Never copy long UTF-8 names into the
+      // legacy 26-byte DGUS buffer when this transport is disabled.
+      (void)str; (void)addr; (void)cmd;
+      return;
+    #endif
     int len = strlen(str);
+    if (len > int(sizeof(databuf)-6)) len = sizeof(databuf)-6;
     if(len > 0)
     {
       databuf[0] = FHONE;
@@ -441,9 +453,79 @@
     RTS_SndData();
   }
 
-  void RTSSHOW::RTS_SDCardInit(void)
+  #if ENABLED(TJC_AVAILABLE)
+  // Read through an independent handle: a network M23 may already own the
+  // CardReader print handle. Preview scanning never changes its seek position.
+  void RTS_LoadPrintPreview(const char *filename, const char *display_name) {
+    LCD_SERIAL_2.printf("printpause.cp0.close()\xff\xff\xff");
+    LCD_SERIAL_2.printf("printpause.cp0.aph=0\xff\xff\xff");
+    LCD_SERIAL_2.printf("printpause.va1.txt=\"\"\xff\xff\xff");
+    SdFile root = card.getroot(), image;
+    // Retain the stock optional sidecar preview used by locally copied files.
+    if (display_name && *display_name) {
+      char sidecar[96];
+      snprintf(sidecar, sizeof(sidecar), "%s.txt", display_name);
+      if (image.open(&root, sidecar, O_READ)) {
+        uint8_t part[512];
+        bool valid = true;
+        uint32_t total = 0;
+        int16_t n;
+        while ((n = image.read(part, sizeof(part))) > 0) {
+          total += n;
+          if (total > 102400) { valid = false; break; }
+          uint16_t end = n;
+          for (uint16_t i = 0; i < end; ++i) {
+            if (!part[i] || part[i] == '\r' || part[i] == '\n') { end = i; break; }
+            if (part[i] < 32 || part[i] > 126 || part[i] == '"' || part[i] == '\\') { valid = false; break; }
+          }
+          if (!valid) break;
+          LCD_SERIAL_2.printf("printpause.va0.txt=\"");
+          LCD_SERIAL_2.write(part, end);
+          LCD_SERIAL_2.printf("\"\xff\xff\xff");
+          LCD_SERIAL_2.printf("printpause.va1.txt+=printpause.va0.txt\xff\xff\xff");
+          TERN_(USE_WATCHDOG, hal.watchdog_refresh());
+        }
+        if (n < 0) valid = false;
+        image.close();
+        if (valid && total) {
+          LCD_SERIAL_2.printf("printpause.cp0.aph=127\xff\xff\xff");
+          LCD_SERIAL_2.printf("printpause.cp0.write(printpause.va1.txt)\xff\xff\xff");
+          return;
+        }
+        LCD_SERIAL_2.printf("printpause.va1.txt=\"\"\xff\xff\xff");
+      }
+    }
+    if (!image.open(&root, filename, O_READ)) return;
+    uint8_t block[1024];
+    bool started = false, complete = false;
+    // Elegoo previews are fixed 1024-byte comment records, capped at 100 KiB.
+    for (uint32_t offset = 0; offset < 102400; offset += sizeof(block)) {
+      const int16_t n = image.read(block, sizeof(block));
+      if (n <= 0) break;
+      const ElegooPreview::Record record = ElegooPreview::parse(block, n, started);
+      if (record.result == ElegooPreview::Result::invalid) break;
+      if (record.result == ElegooPreview::Result::complete) { complete = true; break; }
+      if (record.result == ElegooPreview::Result::data) {
+        started = true;
+        LCD_SERIAL_2.printf("printpause.va0.txt=\"");
+        LCD_SERIAL_2.write(block + record.begin, record.length);
+        LCD_SERIAL_2.printf("\"\xff\xff\xff");
+        LCD_SERIAL_2.printf("printpause.va1.txt+=printpause.va0.txt\xff\xff\xff");
+        if (record.final) { complete = true; break; }
+      }
+      TERN_(USE_WATCHDOG, hal.watchdog_refresh());
+    }
+    image.close();
+    if (complete) {
+      LCD_SERIAL_2.printf("printpause.cp0.aph=127\xff\xff\xff");
+      LCD_SERIAL_2.printf("printpause.cp0.write(printpause.va1.txt)\xff\xff\xff");
+    }
+  }
+  #endif
+
+  void RTSSHOW::RTS_SDCardInit(const bool remount)
   {
-    if(RTS_SD_Detected())
+    if(remount && RTS_SD_Detected())
     {
       card.mount();
     }
@@ -469,13 +551,19 @@
 
     if(card.flag.mounted) 
     {
-      uint16_t fileCnt = card.get_num_Files();
-
-      card.getWorkDirName();
-      if(card.filename[0] != '/')
-      {
-        card.cdup();
-      }
+      // Uploads use an independent SdFile. Rebuild CardReader's cached sort
+      // table without remounting or disturbing a selected print file.
+      card.cdroot();
+      memset(&CardRecbuf, 0, sizeof(CardRecbuf));
+      CardRecbuf.recordcount = -1;
+      FilenamesCount = 0;
+      #if ENABLED(TJC_AVAILABLE)
+        for (uint8_t j = 0; j < MaxFileNumber; ++j) {
+          LCD_SERIAL_2.printf("file%d.t%d.txt=\"\"", j / 5 + 1, j);
+          LCD_SERIAL_2.printf("\xff\xff\xff");
+        }
+      #endif
+      const uint16_t fileCnt = card.get_num_Files();
 
       int addrnum = 0;
       int num = 0;
@@ -483,23 +571,17 @@
       for(uint16_t i = 0;(i < fileCnt) && (i < (MaxFileNumber + addrnum));i++)
       {
         card.selectFileByIndex(fileCnt - 1 - i);  
-        char *pointFilename = card.longFilename;
-        int filenamelen = strlen(card.longFilename);
-        int j = 1;
-        while((strncmp(&pointFilename[j], ".gcode", 6) && strncmp(&pointFilename[j], ".GCODE", 6)) && ((j ++) < filenamelen));
-        if(j >= filenamelen)
+        const char *pointFilename = card.longFilename[0] ? card.longFilename : card.filename;
+        if(card.flag.filenameIsDir || !GcodeFilename::stem_length(pointFilename))
         {
           addrnum++;
           continue;
         }
-        if (j >= TEXTBYTELEN)
-        {
-          strncpy(&card.longFilename[TEXTBYTELEN - 3], "..", 2);
-          card.longFilename[TEXTBYTELEN - 1] = '\0';
-          j = TEXTBYTELEN - 1;
-        }
         memset(CardRecbuf.Cardshowfilename[num],0,sizeof(CardRecbuf.Cardshowfilename[num]));
-        strncpy(CardRecbuf.Cardshowfilename[num], card.longFilename, j);
+        #if ENABLED(NEPTUNE_MKS_WIFI_UPLOAD)
+          if (!NeptuneMksWifi::read_uploaded_name(card.filename,CardRecbuf.Cardshowfilename[num],sizeof(CardRecbuf.Cardshowfilename[num])))
+        #endif
+            GcodeFilename::display_name(CardRecbuf.Cardshowfilename[num], sizeof(CardRecbuf.Cardshowfilename[num]), card.longFilename, card.filename);
         strcpy(CardRecbuf.Cardfilename[num], card.filename);
         CardRecbuf.addr[num] = FILE1_TEXT_VP + (num * 20);
         RTS_SndData(CardRecbuf.Cardshowfilename[num], CardRecbuf.addr[num]);
@@ -730,8 +812,10 @@
     }
 
     // represents to update file list
-    if(CardUpdate && lcd_sd_status && RTS_SD_Detected())
+    if(CardUpdate && lcd_sd_status && RTS_SD_Detected()
+       && !card.isFileOpen() && !card.isPrinting())
     {
+      RTS_SDCardInit(false);
       for(uint16_t i = 0;i < CardRecbuf.Filesum;i ++)
       {
         delay(1);
@@ -1141,7 +1225,7 @@
                   //   LCD_SERIAL_2.printf("printpause.va1.txt=\"\"");
                   //   LCD_SERIAL_2.printf("\xff\xff\xff");
 
-                  //   char picname[64];
+                  //   char picname[100];
                   //   uint8_t public_buf[512];
                   //   MediaFileReader file;
                   //   sprintf(picname,"%s.txt",CardRecbuf.Cardshowfilename[i]);
@@ -2962,204 +3046,8 @@
               pause_count_pos = 0;
             #endif
 
-            //图片预览
             #if ENABLED(TJC_AVAILABLE)
-
-              LCD_SERIAL_2.printf("printpause.cp0.close()");
-              LCD_SERIAL_2.printf("\xff\xff\xff");
-
-              LCD_SERIAL_2.printf("printpause.cp0.aph=0");
-              LCD_SERIAL_2.printf("\xff\xff\xff");          
-
-              LCD_SERIAL_2.printf("printpause.va0.txt=\"\"");
-              LCD_SERIAL_2.printf("\xff\xff\xff");
-
-              LCD_SERIAL_2.printf("printpause.va1.txt=\"\"");
-              LCD_SERIAL_2.printf("\xff\xff\xff");
-
-              char picname[64];
-              uint8_t public_buf[512];
-              MediaFileReader file;
-              sprintf(picname,"%s.txt",CardRecbuf.Cardshowfilename[CardRecbuf.recordcount]);
-              bool run = file.open(picname);
-              if(run)
-              {
-                while(1)
-                {
-                  TERN_(USE_WATCHDOG, hal.watchdog_refresh());
-
-                  LCD_SERIAL_2.printf("printpause.cp0.aph=0");
-                  LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                  LCD_SERIAL_2.printf("printpause.va0.txt=\"\"");
-                  LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                  memset(public_buf,0,sizeof(public_buf));
-                  int16_t byte = file.read(public_buf, 512);
-                  
-                  LCD_SERIAL_2.printf("printpause.va0.txt=");
-                  LCD_SERIAL_2.write(0x22);
-                  LCD_SERIAL_2.write(public_buf,sizeof(public_buf));
-                  LCD_SERIAL_2.write(0x22);
-                  LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                  LCD_SERIAL_2.printf("printpause.va1.txt+=printpause.va0.txt");
-                  LCD_SERIAL_2.printf("\xff\xff\xff");
-                        
-                  if(byte<=0) 
-                  {
-                    LCD_SERIAL_2.printf("printpause.cp0.aph=127");
-                    LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                    LCD_SERIAL_2.printf("printpause.cp0.write(printpause.va1.txt)");
-                    LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                    file.close();
-                    break;
-                  };
-                }
-              }
-              else
-              {
-                file.close();
-                memset(picname,0,sizeof(picname));
-
-                SdFile *diveDir;
-                const char * const fname = card.diveToFile(true, diveDir, CardRecbuf.Cardfilename[CardRecbuf.recordcount]);
-                bool run = file.open(fname);
-                if(run)
-                {
-                  uint32_t gPicturePreviewStart = 0;
-                  uint64_t cnt_pre = 0;
-
-                  uint8_t public_buf[1024];
-
-                  while(1)
-                  {
-                    LCD_SERIAL_2.printf("printpause.va0.txt=\"\"");
-                    LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                    memset(public_buf,0,sizeof(public_buf));
-                    int16_t  byte = file.read(public_buf,sizeof(public_buf));
-                    if(((unsigned int)byte)<(sizeof(public_buf))) break;
-                    cnt_pre = (cnt_pre + byte);
-                    //uint32_t *p1  = (uint32_t *)strstr((char *)public_buf, ";gimage:");
-                    uint32_t *p1  = (uint32_t *)strstr((char *)public_buf, ";simage:");
-                    uint32_t *m1  = (uint32_t *)strstr((char *)public_buf, "M10086");
-
-                    if(m1)
-                    {
-                      LCD_SERIAL_2.printf("printpause.cp0.aph=0");
-                      LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                      LCD_SERIAL_2.printf("printpause.cp0.close()");
-                      LCD_SERIAL_2.printf("\xff\xff\xff");
-                      break;
-                    }
-                    
-                    if(p1)
-                    { 
-                      while(1)
-                      {
-                        LCD_SERIAL_2.printf("printpause.va0.txt=\"\"");
-                        LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                        memset(public_buf,0,sizeof(public_buf));
-                        int16_t  byte = file.read(public_buf,sizeof(public_buf));
-                        //uint32_t *p2  = (uint32_t *)strstr((char *)public_buf, ";;gimage:");
-                        uint32_t *p2  = (uint32_t *)strstr((char *)public_buf, ";;simage:");
-                        uint32_t *p3  = (uint32_t *)strstr((char *)public_buf, ";00000");
-                        cnt_pre = (cnt_pre + byte);
-
-                        //if(p2)
-                        if(p2||p3)
-                        {
-                          file.rewind(); //文件读取指针复位
-
-                          while(1) //";gimage:"起始位置
-                          {
-                            while(1)
-                            {
-                              LCD_SERIAL_2.printf("printpause.va0.txt=\"\"");
-                              LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                              TERN_(USE_WATCHDOG, hal.watchdog_refresh());
-                              memset(public_buf,0,sizeof(public_buf));
-                              int16_t byte = file.read(public_buf,1024);
-                              gPicturePreviewStart+=byte;
-
-                              //uint32_t *p1 = (uint32_t *)strstr((char *)public_buf, ";gimage:");
-                              //uint32_t *p2 = (uint32_t *)strstr((char *)public_buf, ";;gimage:");
-                              uint32_t *p1 = (uint32_t *)strstr((char *)public_buf, ";simage:");
-                              uint32_t *p2 = (uint32_t *)strstr((char *)public_buf, ";;simage:");
-                              uint32_t *p3 = (uint32_t *)strstr((char *)public_buf, ";00000");
-                              uint32_t *p4 = (uint32_t *)strstr((char *)public_buf, ";;gimage:");
-
-                              //if(p2)
-
-                              if( (p1==0)&& (p2==0) && (p4==0) && p3)
-                              {
-                                LCD_SERIAL_2.printf("printpause.cp0.aph=127");
-                                LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                                LCD_SERIAL_2.printf("printpause.cp0.write(printpause.va1.txt)");
-                                LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                                cnt_pre = 102400;
-                                break;
-                              }
-
-                              if(p2)
-                              {
-                                LCD_SERIAL_2.printf("printpause.va0.txt=");
-                                LCD_SERIAL_2.write(0x22);
-                                LCD_SERIAL_2.write(&public_buf[9],1023-9);
-                                LCD_SERIAL_2.write(0x22);
-                                LCD_SERIAL_2.printf("\xff\xff\xff");
-                                LCD_SERIAL_2.printf("printpause.va1.txt+=printpause.va0.txt");
-                                LCD_SERIAL_2.printf("\xff\xff\xff");                                     
-
-                                LCD_SERIAL_2.printf("printpause.cp0.aph=127");
-                                LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                                TERN_(USE_WATCHDOG, hal.watchdog_refresh());
-                                delay(200);
-                                TERN_(USE_WATCHDOG, hal.watchdog_refresh());
-
-                                LCD_SERIAL_2.printf("printpause.cp0.write(printpause.va1.txt)");
-                                LCD_SERIAL_2.printf("\xff\xff\xff");
-                                break;
-                              }
-
-                              if(p1)
-                              {
-                                LCD_SERIAL_2.printf("printpause.va0.txt=");
-                                LCD_SERIAL_2.write(0x22);
-                                LCD_SERIAL_2.write(&public_buf[8],1023-8);
-                                LCD_SERIAL_2.write(0x22);
-                                LCD_SERIAL_2.printf("\xff\xff\xff");
-                                LCD_SERIAL_2.printf("printpause.va1.txt+=printpause.va0.txt");
-                                LCD_SERIAL_2.printf("\xff\xff\xff");
-
-                                TERN_(USE_WATCHDOG, hal.watchdog_refresh());
-                                delay(200);
-                                TERN_(USE_WATCHDOG, hal.watchdog_refresh());
-                              }
-                            }
-                            break;
-                          }
-                        }
-                        if(cnt_pre>=102400)  break;
-                      }
-                    }
-                    if(cnt_pre>=102400)  break;
-                  }
-                  file.close();
-                  delay(20);
-                }
-
-                file.close();
-              }
+              RTS_LoadPrintPreview(CardRecbuf.Cardfilename[FilenamesCount], CardRecbuf.Cardshowfilename[FilenamesCount]);
             #endif
 
             queue.enqueue_one_now(cmd);
@@ -6550,10 +6438,10 @@
             LCD_SERIAL_2.printf("printpause.va1.txt=\"\"");
             LCD_SERIAL_2.printf("\xff\xff\xff");
 
-            char picname[64];
+            char picname[100];
             uint8_t public_buf[512];
             MediaFileReader file;
-            sprintf(picname,"%s.txt",CardRecbuf.Cardshowfilename[CardRecbuf.recordcount]);
+            snprintf(picname,sizeof(picname),"%s.txt",CardRecbuf.Cardshowfilename[CardRecbuf.recordcount]);
             bool run = file.open(picname);
             if(run)
             {
@@ -7224,7 +7112,10 @@
 
       case Err_Control:
       {
-
+        if (recdat.data[0] == 1 && !card.isFileOpen() && !card.isPrinting()) {
+          CardUpdate = true;
+          RTS_SDCardUpate();
+        }
       }
       break;
 

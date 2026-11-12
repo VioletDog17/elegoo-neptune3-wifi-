@@ -27,6 +27,12 @@
 //#define DEBUG_CARDREADER
 
 #include "cardreader.h"
+#if ENABLED(NEPTUNE_MKS_WIFI_UPLOAD)
+  #include "../feature/neptune_mks_wifi/wifi.h"
+  #define WIFI_SD_BUSY_RETURN() do { if (NeptuneMksWifi::storage_busy()) { SERIAL_ERROR_MSG("SD busy: WiFi upload"); return; } } while (0)
+#else
+  #define WIFI_SD_BUSY_RETURN() NOOP
+#endif
 
 #include "../MarlinCore.h"
 #include "../lcd/marlinui.h"
@@ -437,6 +443,7 @@ void CardReader::printSelectedFilename() {
 }
 
 void CardReader::mount() {
+  WIFI_SD_BUSY_RETURN();
   flag.mounted = false;
   if (root.isOpen()) root.close();
 
@@ -528,6 +535,7 @@ void CardReader::manage_media() {
  * Used by M22, "Release Media", manage_media.
  */
 void CardReader::release() {
+  WIFI_SD_BUSY_RETURN();
   // Card removed while printing? Abort!
   if (IS_SD_PRINTING())
     abortFilePrintSoon();
@@ -560,6 +568,7 @@ void CardReader::openAndPrintFile(const char *name) {
  * Used by M24 and anywhere Start / Resume applies.
  */
 void CardReader::startOrResumeFilePrinting() {
+  WIFI_SD_BUSY_RETURN();
   if (isMounted()) {
     flag.sdprinting = true;
     flag.sdprintdone = false;
@@ -634,6 +643,8 @@ void announceOpen(const uint8_t doing, const char * const path) {
 //   - 2 : Resuming from a sub-procedure
 //
 void CardReader::openFileRead(const char * const path, const uint8_t subcall_type/*=0*/) {
+  WIFI_SD_BUSY_RETURN();
+  TERN_(NEPTUNE_MKS_WIFI_UPLOAD, NeptuneMksWifi::card_file_changed());
   if (!isMounted()) return;
 
   switch (subcall_type) {
@@ -703,6 +714,8 @@ inline void echo_write_to_file(const char * const fname) {
 // Open a file by DOS path for write
 //
 void CardReader::openFileWrite(const char * const path) {
+  WIFI_SD_BUSY_RETURN();
+  TERN_(NEPTUNE_MKS_WIFI_UPLOAD, NeptuneMksWifi::card_file_changed());
   if (!isMounted()) return;
 
   announceOpen(2, path);
@@ -759,6 +772,7 @@ bool CardReader::fileExists(const char * const path) {
 // Delete a file by name in the working directory
 //
 void CardReader::removeFile(const char * const name) {
+  WIFI_SD_BUSY_RETURN();
   if (!isMounted()) return;
 
   //abortFilePrintNow();
@@ -858,6 +872,7 @@ void CardReader::write_command(char * const buf) {
 #endif
 
 void CardReader::closefile(const bool store_location/*=false*/) {
+  TERN_(NEPTUNE_MKS_WIFI_UPLOAD, NeptuneMksWifi::card_file_changed());
   file.sync();
   file.close();
   flag.saving = flag.logging = false;
@@ -1015,6 +1030,7 @@ const char* CardReader::diveToFile(const bool update_cwd, SdFile* &inDirPtr, con
 }
 
 void CardReader::cd(const char * relpath) {
+  WIFI_SD_BUSY_RETURN();
   SdFile newDir, *parent = &getWorkDir();
 
   if (newDir.open(parent, relpath, O_READ)) {
@@ -1038,6 +1054,7 @@ int8_t CardReader::cdup() {
 }
 
 void CardReader::cdroot() {
+  WIFI_SD_BUSY_RETURN();
   workDir = root;
   flag.workDirIsRoot = true;
   workDirDepth = 0;

@@ -1,6 +1,14 @@
 # Local tools and generated build output
 .platformio-wifi/
+.tools/
+dist/
+sd-check/
+backups/
+recovery/**/*.bin
+recovery/**/*.tft
+**/buildroot/share/PlatformIO/
 **/.pio/
+**/Marlin/Marlin.ino.cpp
 **/__pycache__/
 *.log
 *.obj
@@ -9,3 +17,5 @@
 *.ilk
 *.idb
 *.tlog
+wifi-tests/*.lib
+wifi-tests/*.exp

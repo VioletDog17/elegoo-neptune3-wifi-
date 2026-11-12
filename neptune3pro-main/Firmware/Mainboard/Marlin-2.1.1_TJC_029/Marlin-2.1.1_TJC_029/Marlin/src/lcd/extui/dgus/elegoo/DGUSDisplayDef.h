@@ -34,7 +34,11 @@
   #define MaxFileNumber   25
 
   #define FileNum             MaxFileNumber
-  #define FileNameLen         TEXTBYTELEN
+  #if ENABLED(NEPTUNE_MKS_WIFI_UPLOAD)
+    #define FileNameLen 96
+  #else
+    #define FileNameLen TEXTBYTELEN
+  #endif
   #define RTS_UPDATE_INTERVAL 2000
   #define RTS_UPDATE_VALUE    (2 * RTS_UPDATE_INTERVAL)
 
@@ -247,7 +251,7 @@
     public:
       RTSSHOW();
       int RTS_RecData();
-      void RTS_SDCardInit(void);
+      void RTS_SDCardInit(const bool remount = true);
       bool RTS_SD_Detected(void);
       void RTS_SDCardUpate(void);
       void RTS_SndData(void);
@@ -403,4 +407,8 @@
       static int16_t read(void *obj, void *buff, size_t bytes);
   };
 
+#endif
+
+#if ENABLED(TJC_AVAILABLE)
+  void RTS_LoadPrintPreview(const char *filename, const char *display_name = nullptr);
 #endif

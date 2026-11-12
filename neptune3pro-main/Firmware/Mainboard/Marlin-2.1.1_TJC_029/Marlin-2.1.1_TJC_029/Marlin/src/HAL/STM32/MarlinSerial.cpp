@@ -26,6 +26,9 @@
 
 #include "../../inc/MarlinConfig.h"
 #include "MarlinSerial.h"
+#if ENABLED(NEPTUNE_MKS_WIFI_UPLOAD)
+  #include "../../feature/neptune_mks_wifi/wifi.h"
+#endif
 
 #if ENABLED(EMERGENCY_PARSER)
   #include "../../feature/e_parser.h"
@@ -81,10 +84,19 @@ void MarlinSerial::begin(unsigned long baud, uint8_t config) {
   HardwareSerial::begin(baud, config);
   // Replace the IRQ callback with the one we have defined
   TERN_(EMERGENCY_PARSER, _serial.rx_callback = _rx_callback);
+  #if ENABLED(NEPTUNE_MKS_WIFI_UPLOAD)
+    if (_serial.uart == USART2) _serial.rx_callback = _rx_callback;
+  #endif
 }
 
 // This function is Copyright (c) 2006 Nicholas Zambetti.
 void MarlinSerial::_rx_complete_irq(serial_t *obj) {
+  #if ENABLED(NEPTUNE_MKS_WIFI_UPLOAD)
+    if (obj->uart == USART2) {
+      NeptuneMksWifi::rx_byte();
+      if (obj->handle.ErrorCode) NeptuneMksWifi::rx_fault();
+    }
+  #endif
   // No Parity error, read byte and store it in the buffer if there is room
   unsigned char c;
 
@@ -100,6 +112,9 @@ void MarlinSerial::_rx_complete_irq(serial_t *obj) {
       obj->rx_buff[obj->rx_head] = c;
       obj->rx_head = i;
     }
+    #if ENABLED(NEPTUNE_MKS_WIFI_UPLOAD)
+      else if (obj->uart == USART2) NeptuneMksWifi::rx_fault();
+    #endif
 
     #if ENABLED(EMERGENCY_PARSER)
       emergency_parser.update(static_cast<MSerialT*>(this)->emergency_state, c);

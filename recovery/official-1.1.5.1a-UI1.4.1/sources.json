@@ -1,0 +1,18 @@
+{
+  "downloaded": "2026-11-12",
+  "kind": "published factory update; not a device dump",
+  "files": [
+    {
+      "file": "ZNP_ROBIN_NANO.bin",
+      "bytes": 182596,
+      "sha256": "750dc4d89eb32a371b908fed330d7081e99c49bee3b076cd6041c00729714c1d",
+      "source": "https://raw.githubusercontent.com/NARUTOfzr/Neptune_3_Pro_Plus_Max/main/board%20firmware/Neptune3Pro/Historical%20version/1.1.5.1a-20230210/ZNP_ROBIN_NANO.bin"
+    },
+    {
+      "file": "V1_4_1_20230210.tft",
+      "bytes": 6300320,
+      "sha256": "b0fe8170f2e72104e7621fef1827e8728d1531725e57402169f0ac787d5d0202",
+      "source": "https://raw.githubusercontent.com/NARUTOfzr/Neptune_3_Pro_Plus_Max/main/screen%20firmware/Historical%20version/V1.4.1-20230210/V1_4_1_20230210.tft"
+    }
+  ]
+}

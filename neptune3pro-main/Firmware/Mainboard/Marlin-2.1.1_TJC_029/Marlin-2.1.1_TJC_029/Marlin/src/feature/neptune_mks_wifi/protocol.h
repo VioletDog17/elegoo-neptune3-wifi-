@@ -15,6 +15,7 @@ class Decoder {
   uint16_t used_ = 0, length_ = 0;
   uint8_t state_ = 0, type_ = 0;
 public:
+  bool pending() const { return state_ != 0; }
   void reset() { state_ = 0; used_ = length_ = 0; }
   // Returned payload remains valid until the next feed. Consume synchronously.
   FeedResult feed(const uint8_t byte, Frame &out) {
@@ -84,7 +85,9 @@ public:
     const uint32_t id = read_le32(f.data), count = f.size - 4;
     if ((id & 0x7FFFFFFFUL) != next_ || count > expected_ - received_) return false;
     const bool last = (id & 0x80000000UL) != 0;
-    return last == (received_ + count == expected_) && (count || last);
+    // MKS may send a full final data block without LAST, followed by an
+    // empty LAST frame (notably when the file length is a multiple of 1015).
+    return (!last || received_ + count == expected_) && (count || last);
   }
   bool commit(const Frame &f) {
     if (!validate(f)) return false;

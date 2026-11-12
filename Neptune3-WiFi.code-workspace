@@ -1,0 +1,44 @@
+{
+  "folders": [
+    { "name": "Neptune3-WiFi", "path": "." }
+  ],
+  "settings": {
+    "files.exclude": { "**/.tools": true, "**/.platformio-wifi": true },
+    "search.exclude": { "**/.tools/**": true, "**/.platformio-wifi/**": true, "**/.pio/**": true }
+  },
+  "extensions": {
+    "recommendations": ["ms-vscode.cpptools", "platformio.platformio-ide"]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Neptune: build WiFi upload and print",
+        "type": "process",
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/wifi-tests/build.ps1", "-Environment", "NEPTUNE3_MKS_WIFI"],
+        "options": { "cwd": "${workspaceFolder}" },
+        "group": { "kind": "build", "isDefault": true },
+        "problemMatcher": ["$gcc"]
+      },
+      {
+        "label": "Neptune: build baseline",
+        "type": "process",
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/wifi-tests/build.ps1", "-Environment", "MKS_E3_V2"],
+        "options": { "cwd": "${workspaceFolder}" },
+        "group": "build",
+        "problemMatcher": ["$gcc"]
+      },
+      {
+        "label": "Neptune: protocol tests",
+        "type": "process",
+        "command": "cmd.exe",
+        "args": ["/d", "/c", "wifi-tests\\run-tests.cmd"],
+        "options": { "cwd": "${workspaceFolder}" },
+        "group": "test",
+        "problemMatcher": ["$gcc"]
+      }
+    ]
+  }
+}

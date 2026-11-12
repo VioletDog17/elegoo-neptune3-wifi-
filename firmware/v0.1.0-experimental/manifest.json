@@ -1,0 +1,61 @@
+{
+  "created_at": "2026-11-12T23:18:18.406662+03:00",
+  "hardware_tested": false,
+  "mainboard_environment": "NEPTUNE3_MKS_WIFI",
+  "display_model": "TJC4827X243_011",
+  "screen_compiler": "USART HMI 1.68.2",
+  "screen_compile_errors": 0,
+  "screen_compile_warnings": 0,
+  "screen_source": "neptune3pro-main/Firmware/LCD/NEPTUNE3_WIFI_NAMES.HMI",
+  "screen_source_sha256": "fdbdbab3940fb7f231417809eed35ec05bda439d5fe3a5990fbd9c7ecd1b5b32",
+  "validation": [
+    "six C++ suites PASS",
+    "Marlin build PASS: RAM 36676/65536, flash 187652/262144",
+    "TJC simulator: original Cyrillic filename over 36 bytes accepted and visible",
+    "HMI comparison: only printpause.t0 txt_maxl 36 to 128; STYLE events/resources retained"
+  ],
+  "files": {
+    "INSTALL-RU.md": {
+      "bytes": 11925,
+      "sha256": "8e058b78b19defbd6c60ee26495d63831afce726626483191b09e749111a3409"
+    },
+    "mainboard/ZNP_ROBIN_NANO.bin": {
+      "bytes": 188152,
+      "sha256": "007a0ac9646701dc26923fc38bf4270ae5bf394032e5daddb04c8a3ab134ebc6"
+    },
+    "README.md": {
+      "bytes": 1898,
+      "sha256": "9b1db42ad51a55b6eb21ffd5a4b8eb7b7725655425ea67e0124c91eec21c6d84"
+    },
+    "screen/NEPTUNE3_WIFI_NAMES.tft": {
+      "bytes": 6481652,
+      "sha256": "36e9215738bf94e71fc4d7f1ddb18fcebc871209648c69f3f003dffa98dd8f51"
+    }
+  },
+  "release": "v0.1.0-experimental",
+  "hardware": {
+    "printer": "ELEGOO Neptune 3 Pro",
+    "mainboard": "ZNP Robin Nano_DW V2.2",
+    "compile_target": "marlin_MKS_F401RC / STM32F401RC",
+    "clock_mhz": 84,
+    "flash_kib": 256,
+    "ram_kib": 64,
+    "application_offset": "0x8000",
+    "bootloader_included": false,
+    "wifi_module": "Makerbase MKS Robin WIFI V1.1, stock MKS protocol",
+    "display": "TJC4827X243_011 / ZNP4827X243_011C_Z15",
+    "display_resolution": [
+      272,
+      480
+    ]
+  },
+  "toolchain": {
+    "platformio": "6.1.18",
+    "ststm32": "12.1.1",
+    "arm_gcc": "9.2.1",
+    "arduino_stm32": "1.9.0",
+    "tjc_editor": "1.68.2"
+  },
+  "license": "GPL-3.0; see repository LICENSE and retained upstream notices",
+  "ai_assisted": true
+}
