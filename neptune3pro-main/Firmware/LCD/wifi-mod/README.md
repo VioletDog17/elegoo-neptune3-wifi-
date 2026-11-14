@@ -1,5 +1,7 @@
 # WIFI MOD screen source
 
+Development revision: `../NEPTUNE3_WIFI_CONTROL.HMI`, exported as `NEPTUNE3_WIFI_CONTROL.tft`. Restores the stock localized Files title and draws a small refresh arrow within the existing title touch target (VP 0x2203 value 1). Uses `printpause.t0.font=0` before page initialization for Cyrillic names. See `docs/SCREENS-RU.md` for simulator captures and `docs/WEB-CONTROL-RU.md` for the matching three-part development update.
+
 Latest functional revision: `../NEPTUNE3_WIFI_NAMES.HMI` retains STYLE and changes only `printpause.t0.txt_maxl` from 36 to 128. Export to `dist/NEPTUNE3_WIFI_NAMES/screen/`. Requires matching mainboard filename metadata support; see `WIFI-NAMES-UPDATE-RU.md` at repository root.
 
 Latest cosmetic revision: `../NEPTUNE3_WIFI_MOD_STYLE.HMI`, exported to

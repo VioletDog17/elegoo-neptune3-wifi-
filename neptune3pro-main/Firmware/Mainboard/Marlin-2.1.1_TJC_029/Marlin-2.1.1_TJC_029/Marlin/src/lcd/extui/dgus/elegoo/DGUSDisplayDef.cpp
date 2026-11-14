@@ -454,6 +454,23 @@
   }
 
   #if ENABLED(TJC_AVAILABLE)
+  // Always resolve the file that is actually open. A network-started print
+  // has no corresponding selection index in the local file browser.
+  void RTS_SetPrintFilename(const char *fallback) {
+    char original[96]={};
+    const char *name=fallback ? fallback : "";
+    if (card.isFileOpen()) {
+      #if ENABLED(NEPTUNE_MKS_WIFI_UPLOAD)
+        if (NeptuneMksWifi::read_uploaded_name(card.filename,original,sizeof(original))) name=original;
+        else
+      #endif
+        if (!*name) name=card.filename;
+    }
+    LCD_SERIAL_2.print("printpause.t0.font=0\xff\xff\xff");
+    LCD_SERIAL_2.print("printpause.t0.txt=\"");
+    LCD_SERIAL_2.print(name);
+    LCD_SERIAL_2.print("\"\xff\xff\xff");
+  }
   // Read through an independent handle: a network M23 may already own the
   // CardReader print handle. Preview scanning never changes its seek position.
   void RTS_LoadPrintPreview(const char *filename, const char *display_name) {
@@ -5416,9 +5433,7 @@
 
           //打印文件名
           memset(temp,0,sizeof(temp));
-          sprintf(temp, "printpause.t0.txt=\"%s\"", CardRecbuf.Cardshowfilename[CardRecbuf.recordcount]);
-          LCD_SERIAL_2.printf(temp); 
-          LCD_SERIAL_2.printf("\xff\xff\xff");
+          RTS_SetPrintFilename();
 
           //打印百分比
           Percentrecord = card.percentDone();

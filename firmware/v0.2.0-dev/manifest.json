@@ -1,0 +1,103 @@
+{
+  "version": "0.2.0-dev",
+  "hardware_tested": false,
+  "created_at": "2026-11-14T08:37:57.952917+00:00",
+  "mainboard_environment": "NEPTUNE3_MKS_WIFI",
+  "mainboard_mcu_build": "stock marlin_MKS_F401RC, 84MHz, flash offset 0x8000",
+  "display_model": "TJC4827X243_011",
+  "display_orientation": "272x480 portrait UTF-8",
+  "screen_compiler": "USART HMI 1.68.2",
+  "screen_compile_errors": 0,
+  "screen_compile_warnings": 0,
+  "screen_source_sha256": "2ad0ec3b39e1bb5011e5c33113d471b9680cd372eb04c61dba4771cb195b1f91",
+  "wifi_target": "MKS Robin WIFI V1.1 / ESP8266 / 4MB flash / DOUT / eagle.flash.4m3m.ld",
+  "wifi_platform": "espressif8266@4.2.1, Arduino 3.1.2",
+  "wifi_firmware_revision": "0.2.0-dev-uart2",
+  "hardware_validation": {
+    "date": "2026-11-13",
+    "wifi_ota": true,
+    "live_status": true,
+    "cooldown": true,
+    "upload_saved_bytes": [
+      43,
+      217141
+    ],
+    "cyrillic_filename_and_size": true,
+    "test_print_started": false,
+    "slicer_upload_user_confirmed": "2026-11-14",
+    "remaining": [
+      "motion",
+      "print/pause/resume",
+      "wifi_reconfiguration"
+    ]
+  },
+  "validation": [
+    "seven native C++ test suites PASS",
+    "mainboard and ESP8266 builds PASS",
+    "TJC simulator: Cyrillic filename visible, refresh VP 0x2203 verified",
+    "HMI comparison: only file1 and printpause changed",
+    "headless Chrome: desktop/mobile, Wi-Fi dialog, filename/filter, mocked controls and offline locks PASS"
+  ],
+  "files": {
+    "docs/INSTALL-RU.md": {
+      "bytes": 12185,
+      "sha256": "0967b659b9e79ffc2bdad5114eb5737011a023f48fe72cf51d562ea824f70ef4"
+    },
+    "docs/SCREENS-RU.md": {
+      "bytes": 2396,
+      "sha256": "8919ae48eb14191e4ac3e05ece421742a11c939b4fde78226d665dcb3b489f38"
+    },
+    "docs/screenshots/screen-about-simulator.png": {
+      "bytes": 58687,
+      "sha256": "94d843d11758fbcf2ef4fe661f28de589483a22a51a56978b21e7ad762a5075b"
+    },
+    "docs/screenshots/screen-files-simulator.png": {
+      "bytes": 31334,
+      "sha256": "272a184443b3196479ff945ffcbe344b9481ff265807d742918f7a196ad791ca"
+    },
+    "docs/screenshots/screen-main-simulator.png": {
+      "bytes": 60023,
+      "sha256": "dcbfdf2b82f24e4d078bb3ec3da2cb0600ed5789bf68cfb864cba26a2e6f64d6"
+    },
+    "docs/screenshots/screen-print-cyrillic-simulator.png": {
+      "bytes": 70786,
+      "sha256": "99cc09c767bb270f201a74271bb31ee8b104805a93ccbe90b88d5209152dd272"
+    },
+    "docs/screenshots/web-mobile-demo.png": {
+      "bytes": 97649,
+      "sha256": "92d8221a649c5c45454dda143445ca46a4b7844df3adc6b9408dc690a0957318"
+    },
+    "docs/screenshots/web-panel-demo.png": {
+      "bytes": 112733,
+      "sha256": "79760f0c3565c8678d567c4603f8b9c817414dd3af47b50c095eb725ddfb9d05"
+    },
+    "docs/screenshots/web-wifi-demo.png": {
+      "bytes": 181723,
+      "sha256": "000b34edb25e9a68e7f5e87b4b144ddb3438a49d87a8685d6ba50f46d3186f7b"
+    },
+    "docs/WEB-CONTROL-RU.md": {
+      "bytes": 11939,
+      "sha256": "ce4983b01d36b0cd3d2e23b8626da878800f1fbd859a86f635c25634cf5bbd45"
+    },
+    "INSTALL-RU.md": {
+      "bytes": 121,
+      "sha256": "bfcdddd96cfffaff386b5cbfcc2f1b71ab3ab21c2a18017cb46168e9421dbaac"
+    },
+    "mainboard/ZNP_ROBIN_NANO.bin": {
+      "bytes": 192128,
+      "sha256": "73ff372f509c320889049f61603fa43b0948250c9e02070b3f79a19310837eec"
+    },
+    "README.md": {
+      "bytes": 1446,
+      "sha256": "4d1b1916d055c3db4e083c296f01fc1e9f583f4af71f76287dea149655ed0b5f"
+    },
+    "screen/NEPTUNE3_WIFI_CONTROL.tft": {
+      "bytes": 6481648,
+      "sha256": "c076d8be7312f194165c45f0d1b612d3a5059b81b3db1defe7612ba2d99fab81"
+    },
+    "wifi/MksWifi.bin": {
+      "bytes": 342320,
+      "sha256": "05a875edd2df5f64fba359add624e5957e633bffb2a2dca3c9fcd81a78152738"
+    }
+  }
+}

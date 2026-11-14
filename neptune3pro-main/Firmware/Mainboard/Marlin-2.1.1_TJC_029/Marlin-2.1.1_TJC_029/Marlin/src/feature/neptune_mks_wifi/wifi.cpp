@@ -36,6 +36,9 @@
   #include "upload.h"
   #include "sd_store.h"
   #include "sd_names.h"
+  #include "web_control.h"
+  #include "../../module/motion.h"
+  #include "../../MarlinCore.h"
   #include "../../lcd/extui/dgus/elegoo/DGUSDisplayDef.h"
 #endif
 #include <stdio.h>
@@ -62,7 +65,7 @@ static FragmentBlock block;
 static uint32_t last_upload_byte = 0, cooldown_until = 0;
 static bool selected = false, start_pending = false, show_print_page = false;
 static char selected_name[13] = {}, selected_display[96] = {};
-static uint32_t completed_size = 0;
+static uint32_t completed_size = 0, upload_offer_due = 0;
 static char last_upload_error[48] = {};
 #endif
 
@@ -158,6 +161,8 @@ static void upload_frame(const Frame &frame) {
     rx_failed = false;
     last_upload_byte = millis();
     block.reset();
+    if (upload_offer_due && PENDING(millis(),upload_offer_due)) exception(4); // v2 explicit offer ACK at 115200
+    upload_offer_due=0;
     baud(1958400);
     SERIAL_ECHOLNPGM("MKS upload receiving: ", upload.original());
     WRITE(PC15, LOW);
@@ -168,7 +173,108 @@ static void upload_frame(const Frame &frame) {
   }
 }
 
+static void web_result(const uint16_t id, const char *error=nullptr) {
+  char text[100];
+  if (error) snprintf(text,sizeof(text),"M996 %u ERROR %s\r\n",id,error);
+  else snprintf(text,sizeof(text),"M996 %u OK\r\n",id);
+  send(text);
+}
+static bool transfer_command(const char *line);
+static bool web_command(const char *line) {
+  if (!strncmp(line,"M796",4)) {
+    WebJob job;
+    if (!parse_web_job(line,job)) { web_result(0,"invalid_command"); return true; }
+    if (!IsRunning() || storage_busy()) { web_result(job.id,"busy"); return true; }
+    bool accepted=false;
+    if (!strcmp(job.action,"PRINT")) {
+      if (!idle_for_upload()) { web_result(job.id,"busy"); return true; }
+      char select[20]; snprintf(select,sizeof(select),"M23 %s",job.alias);
+      transfer_command(select);
+      if (selected) { transfer_command("M24"); accepted=start_pending; }
+    }
+    else if (!strcmp(job.action,"PAUSE")) accepted=card.isPrinting() && queue.enqueue_one(F("M25"));
+    else if (!strcmp(job.action,"RESUME")) {
+      accepted=card.isFileOpen() && print_job_timer.isPaused() && queue.enqueue_one(F("M24"));
+      if (accepted) sdcard_pause_check=true;
+    }
+    else if (card.isFileOpen()) { card.abortFilePrintSoon(); selected=start_pending=show_print_page=false; accepted=true; }
+    web_result(job.id,accepted?nullptr:"job_rejected"); return true;
+  }
+  if (!strncmp(line,"M996",4)) {
+    WebCommand cmd;
+    if (!parse_web_command(line,cmd)) { web_result(0,"invalid_command"); return true; }
+    if (!IsRunning()) { web_result(cmd.id,"printer_stopped"); return true; }
+    const WebGate gate={storage_busy(),card.isPrinting() || print_job_timer.isRunning(),print_job_timer.isPaused(),
+      card.isFileOpen() || queue.has_commands_queued() || planner.has_blocks_queued() || start_pending,
+      axis_is_trusted(X_AXIS) && axis_is_trusted(Y_AXIS) && axis_is_trusted(Z_AXIS)};
+    if (const char *error=web_denied(cmd,gate)) { web_result(cmd.id,error); return true; }
+    switch (cmd.action) {
+      case WebAction::home: {
+        char home[8]="G28";
+        if (cmd.axis!='A') snprintf(home,sizeof(home),"G28 %c",cmd.axis);
+        if (!queue.enqueue_one(home)) { web_result(cmd.id,"queue_full"); return true; }
+      } break;
+      case WebAction::park:
+        if (!queue.enqueue_one(F("G27 P2"))) { web_result(cmd.id,"queue_full"); return true; }
+        break;
+      case WebAction::jog: {
+        const AxisEnum axis=cmd.axis=='X' ? X_AXIS : cmd.axis=='Y' ? Y_AXIS : Z_AXIS;
+        destination=current_position;
+        const float target=destination[axis]+cmd.value;
+        destination[axis]=target; apply_motion_limits(destination);
+        if (fabsf(destination[axis]-target)>0.001f) { web_result(cmd.id,"travel_limit"); return true; }
+        prepare_internal_move_to_destination(axis==Z_AXIS ? 4 : 30);
+      } break;
+      case WebAction::nozzle: thermalManager.setTargetHotend(cmd.value,0); break;
+      case WebAction::bed: thermalManager.setTargetBed(cmd.value); break;
+      case WebAction::fan: thermalManager.set_fan_speed(0,uint16_t(cmd.value*255/100)); break;
+      case WebAction::speed: feedrate_percentage=int16_t(cmd.value); break;
+      case WebAction::cooldown: thermalManager.disable_all_heaters(); thermalManager.set_fan_speed(0,0); break;
+    }
+    web_result(cmd.id); return true;
+  }
+  if (!strcmp(line,"M995")) {
+    char text[440];
+    const unsigned homed=(axis_is_trusted(X_AXIS)?1:0) | (axis_is_trusted(Y_AXIS)?2:0) | (axis_is_trusted(Z_AXIS)?4:0);
+    snprintf(text,sizeof(text),
+      "M995 {\"v\":2,\"state\":\"%s\",\"busy\":%s,\"homed\":%u,\"x100\":%ld,\"y100\":%ld,\"z100\":%ld,\"nozzle\":%d,\"nozzle_target\":%d,\"bed\":%d,\"bed_target\":%d,\"fan\":%u,\"speed\":%d,\"progress\":%u,\"elapsed\":%lu,\"sd\":%s}\r\n",
+      print_job_timer.isPaused()?"paused":card.isPrinting()?"printing":"idle",
+      (storage_busy() || queue.has_commands_queued() || planner.has_blocks_queued() || start_pending)?"true":"false",homed,
+      long(current_position.x*100),long(current_position.y*100),long(current_position.z*100),
+      int(thermalManager.wholeDegHotend(0)),int(thermalManager.degTargetHotend(0)),int(thermalManager.wholeDegBed()),int(thermalManager.degTargetBed()),
+      unsigned(thermalManager.fanSpeedPercent(0)),int(feedrate_percentage),unsigned(card.percentDone()),(unsigned long)print_job_timer.duration(),card.isMounted()?"true":"false");
+    send(text); return true;
+  }
+  if (!strcmp(line,"M794")) {
+    if (!idle_for_upload()) { send("M794 ERROR busy\r\n"); return true; }
+    upload_offer_due=millis()+5000; send("M794 READY\r\n"); return true;
+  }
+  if (!strcmp(line,"M795")) {
+    if (storage_busy() || card.isFileOpen()) { send("M795 ERROR busy\r\n"); return true; }
+    if (!card.isMounted()) card.mount();
+    if (!card.isMounted()) { send("M795 ERROR no_sd\r\n"); return true; }
+    SdFile root=card.getroot(), file; root.rewind();
+    send("M795 BEGIN\r\n"); uint16_t scanned=0,count=0;
+    while (scanned++<1024 && count<128 && file.openNext(&root,O_READ)) {
+      char alias[13]={}; file.getDosName(alias);
+      const bool valid=file.isFile() && valid_upload_name(alias,strlen(alias));
+      const uint32_t bytes=file.fileSize(); file.close();
+      if (valid) {
+        char name[96],text[200];
+        if (!read_uploaded_name(alias,name,sizeof(name))) strcpy(name,alias);
+        snprintf(text,sizeof(text),"M795 {\"alias\":\"%s\",\"name\":\"%s\",\"size\":%lu}\r\n",alias,name,(unsigned long)bytes);
+        send(text); ++count;
+      }
+      thermalManager.task();
+      TERN_(USE_WATCHDOG, hal.watchdog_refresh());
+    }
+    send("M795 END\r\n"); return true;
+  }
+  return false;
+}
 static bool transfer_command(const char *line) {
+  if (web_command(line)) return true;
+
   if (!strcmp(line, "M20") || !strcmp(line, "M20 0:/") || !strcmp(line, "M20 1:/")) {
     if (storage_busy() || card.isFileOpen()) { send("Error:SD busy\r\n"); return true; }
     if (!card.isMounted()) card.mount();
@@ -203,7 +309,15 @@ static bool transfer_command(const char *line) {
     const char *resolved = upload.resolve(name);
     char persisted[13]; uint32_t expected_size=completed_size;
     if (!resolved) {
-      if (!resolve_uploaded_name(name,persisted,expected_size)) { send("Error:No verified WiFi upload for this filename\r\n"); return true; }
+      if (!resolve_uploaded_name(name,persisted,expected_size)) {
+        SdFile root=card.getroot(), candidate;
+        if (strlen(name)>12 || !valid_upload_name(name,strlen(name)) || strchr(name,'/') || strchr(name,'\\')
+            || !candidate.open(&root,name,O_READ) || !candidate.isFile()) {
+          candidate.close(); send("Error:No matching printable file\r\n"); return true;
+        }
+        expected_size=candidate.fileSize(); candidate.close(); strcpy(persisted,name);
+        if (!expected_size) { send("Error:Empty file\r\n"); return true; }
+      }
       resolved=persisted;
     }
     card.openFileRead(resolved);
@@ -219,6 +333,10 @@ static bool transfer_command(const char *line) {
     return true;
   }
   if (!strcmp(line, "M24")) {
+    if (!storage_busy() && card.isFileOpen() && print_job_timer.isPaused() && !start_pending) {
+      if (!queue.enqueue_one(F("M24"))) { send("Error:Command queue full\r\n"); return true; }
+      sdcard_pause_check=true; send("ok\r\n"); return true;
+    }
     if (storage_busy() || start_pending || !selected || !card.isFileOpen() || card.isPrinting()) { send("Error:No verified selected file\r\n"); return true; }
     RTS_LoadPrintPreview(selected_name);
     if (!queue.enqueue_one(F("M24"))) { send("Error:Command queue full\r\n"); return true; }
@@ -355,7 +473,7 @@ void tick() {
       ::sdcard_pause_check = true;
       ::Update_Time_Value = 0;
       PoweroffContinue = true;
-      LCD_SERIAL_2.print("printpause.t0.txt=\""); LCD_SERIAL_2.print(selected_display); LCD_SERIAL_2.print("\"\xff\xff\xff");
+      RTS_SetPrintFilename(selected_display);
       LCD_SERIAL_2.print("page printpause\xff\xff\xff");
     }
     if (start_pending && !queue.has_commands_queued() && !card.isFileOpen()) selected = start_pending = show_print_page = false;

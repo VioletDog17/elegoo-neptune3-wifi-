@@ -26,12 +26,16 @@ if errorlevel 1 exit /b 1
 cl /nologo /EHsc /W4 /WX /utf-8 /std:c++14 filename_metadata_test.cpp /Fe:filename_metadata_test.exe
 if errorlevel 1 exit /b 1
 filename_metadata_test.exe
+if errorlevel 1 exit /b 1
+cl /nologo /EHsc /W4 /WX /utf-8 /std:c++14 web_control_test.cpp /Fe:web_control_test.exe
+if errorlevel 1 exit /b 1
+web_control_test.exe
 exit /b %errorlevel%
 
 :zig
 set "ZIG_GLOBAL_CACHE_DIR=%~dp0..\.tools\zig-cache"
 set "ZIG_LOCAL_CACHE_DIR=%~dp0..\.tools\zig-local"
-for %%T in (protocol receiver upload compatibility preview filename_metadata) do (
+for %%T in (protocol receiver upload compatibility preview filename_metadata web_control) do (
   "..\.tools\python\ziglang\zig.exe" c++ -std=c++14 -Wall -Wextra -Werror %%T_test.cpp -o %%T_test.exe
   if errorlevel 1 exit /b 1
   %%T_test.exe

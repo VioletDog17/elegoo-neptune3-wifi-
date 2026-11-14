@@ -411,4 +411,5 @@
 
 #if ENABLED(TJC_AVAILABLE)
   void RTS_LoadPrintPreview(const char *filename, const char *display_name = nullptr);
+  void RTS_SetPrintFilename(const char *fallback = nullptr);
 #endif

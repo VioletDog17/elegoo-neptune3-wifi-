@@ -19,3 +19,7 @@ recovery/**/*.tft
 *.tlog
 wifi-tests/*.lib
 wifi-tests/*.exp
+.platformio/
+esp8266/include/web_bundle.h
+# Superseded pre-hardware-test archive; use the uart2 package.
+firmware/v0.2.0-dev/Neptune3-WiFi-Control-v0.2.0-dev.zip
